@@ -1,71 +1,73 @@
 #include <WiFi.h>
-#include <WebSocketsClient.h>
-#include <WiFiClientSecure.h>
-
-#include "FS.h"
+#include <HTTPClient.h>
 
 const char *ssid = "Scooby-Doo";
 const char *password = "10203040";
 
-WebSocketsClient webSocket;
-
-int ledPin = 2; // Defina o pino do LED
+const char *apiUrl = "https://projeto-instaled-api-1.onrender.com/led/state";
+const int relayPin = 23;
 
 void setup()
 {
-  Serial.begin(115200); // Configura a comunicação serial
+  Serial.begin(115200);
 
-  // Conectar ao Wi-Fi
   WiFi.begin(ssid, password);
+  Serial.print("Conectando-se ao Wi-Fi");
   while (WiFi.status() != WL_CONNECTED)
   {
-    delay(500);
+    delay(1000);
     Serial.print(".");
   }
-  Serial.println("Conectado ao Wi-Fi");
-  Serial.print("IP do ESP32: ");
-  Serial.println(WiFi.localIP());
+  Serial.println("\nConectado ao Wi-Fi!");
 
-  pinMode(ledPin, OUTPUT);
-
-  // Conectar ao servidor WebSocket
-  webSocket.begin("seu_servidor_websocket", 8080, "/"); // Defina o IP do servidor e a porta
-
-  // Configurar callback para quando receber mensagens do WebSocket
-  webSocket.onEvent(webSocketEvent);
+  pinMode(relayPin, OUTPUT);
+  digitalWrite(relayPin, LOW);
 }
 
 void loop()
 {
-  // Manter a conexão com o WebSocket
-  webSocket.loop();
-}
-
-// Callback para quando uma mensagem é recebida do WebSocket
-void webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
-{
-  switch (type)
+  if (WiFi.status() == WL_CONNECTED)
   {
-  case WStype_CONNECTED:
-    Serial.println("Conectado ao WebSocket");
-    break;
-  case WStype_DISCONNECTED:
-    Serial.println("Desconectado do WebSocket");
-    break;
-  case WStype_TEXT:
-    String msg = String((char *)payload);
-    Serial.println("Mensagem recebida: " + msg);
+    HTTPClient http;
+    http.begin(apiUrl);
 
-    if (msg == "ligar_led")
+    int httpResponseCode = http.GET();
+
+    if (httpResponseCode == 200)
     {
-      digitalWrite(ledPin, HIGH); // Ligar o LED
-      Serial.println("LED Ligado");
+      String response = http.getString();
+      Serial.println("Resposta da API: " + response);
+
+      // Analisa o JSON retornado
+      if (response.indexOf("\"state\":true") != -1)
+      {
+        digitalWrite(relayPin, LOW); // Liga o relé
+        Serial.println("Relé ligado");
+      }
+      else if (response.indexOf("\"state\":false") != -1)
+      {
+        digitalWrite(relayPin, HIGH); // Desliga o relé
+        Serial.println("Relé desligado");
+      }
+      else
+      {
+        Serial.println("Resposta JSON inválida!");
+      }
     }
-    else if (msg == "desligar_led")
+    else
     {
-      digitalWrite(ledPin, LOW); // Desligar o LED
-      Serial.println("LED Desligado");
+      Serial.println("Erro ao acessar a API: " + String(httpResponseCode));
     }
-    break;
+
+    http.end();
   }
+  else
+  {
+    Serial.println("Wi-Fi desconectado! Tentando reconectar...");
+    WiFi.reconnect();
+  }
+
+  delay(5000);
 }
+
+// tentando subir esse trem
